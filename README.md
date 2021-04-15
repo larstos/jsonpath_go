@@ -1,5 +1,6 @@
 JsonPath
 ----------------
+![Build Status](https://travis-ci.com/larstos/jsonpath_go.svg?branch=main)
 
 A golang implementation of JsonPath syntax,
 follow the majority rules in http://goessner.net/articles/JsonPath/
