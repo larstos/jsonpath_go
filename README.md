@@ -62,12 +62,14 @@ referenced from github.com/jayway/JsonPath
 | $ 					  | Y | The root element to query. This starts all path expressions. |
 | @ 				      | Y | The current node being processed by a filter predicate. |
 | * 					  | Y | Wildcard. Available anywhere a name or numeric are required. |
-| .. 					  | Y | Deep scan. Available anywhere a name is required. |
+| .. 					  | X | Deep scan. Available anywhere a name is required. |
 | .<name> 				  | Y | Dot-notated child |
 | ['<name>' (, '<name>')] | X | Bracket-notated child or children |
 | [<number> (, <number>)] | Y | Array index or indexes |
 | [start:end] 			  | Y | Array slice operator |
 | [?(<expression>)] 	  | Y | Filter expression. Expression must evaluate to a boolean value. |
+
+note：library deal with ".." as ".*."
 
 Examples
 --------
