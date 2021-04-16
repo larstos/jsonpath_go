@@ -106,7 +106,12 @@ func (c *Compiled) Lookup(obj interface{}) (interface{}, error) {
 	}
 	var err error
 	rootnode := obj
-	for idx, s := range c.steps {
+	for idx := 0; idx < len(c.steps); idx++ {
+		s := c.steps[idx]
+		if s.op == "search" {
+			s.next = &c.steps[idx+1]
+			idx++
+		}
 		// "key", "idx"
 		obj, err = s.parse(obj, rootnode)
 		if err != nil {
@@ -115,7 +120,7 @@ func (c *Compiled) Lookup(obj interface{}) (interface{}, error) {
 		//Note: scan and filter will collect match result into slice.
 		//But real result should be the collection of each matched object parsed by the rest step.
 		//So make a special logic here.
-		if (s.op == "filter" || s.op == "scan") && idx != len(c.steps)-1 {
+		if s.shouldSeparate() && idx != len(c.steps)-1 {
 			temc := &Compiled{
 				steps: c.steps[idx+1:],
 			}
@@ -169,6 +174,7 @@ type step struct {
 	args       interface{}
 	filter     filterParam
 	replaceVal interface{}
+	next       *step
 }
 
 func tokenize(query string) ([]string, error) {
@@ -193,7 +199,10 @@ func tokenize(query string) ([]string, error) {
 		token := tokens[idx]
 		switch token {
 		case "":
-			sublist = append(sublist, "*")
+			if len(rets) > 0 && rets[len(rets)-1] == " " {
+				continue
+			}
+			sublist = append(sublist, " ")
 		default:
 			//findout regexp
 			if strings.Index(token, "=~") > 0 {
@@ -244,6 +253,13 @@ func parse_token(token string) (step, error) {
 		return step{
 			op:   "scan",
 			key:  "*",
+			args: nil,
+		}, nil
+	}
+	if token == " " {
+		return step{
+			op:   "search",
+			key:  "",
 			args: nil,
 		}, nil
 	}
@@ -316,6 +332,16 @@ func parse_token(token string) (step, error) {
 		retstep.args = res
 	}
 	return retstep, nil
+}
+
+func (s step) shouldSeparate() bool {
+	if s.op == "filter" || s.op == "scan" || s.op == "search" || s.op == "range" {
+		return true
+	}
+	if s.op == "idx" && len(s.args.([]int)) > 1 {
+		return true
+	}
+	return false
 }
 
 func (s step) parse(obj interface{}, rootnode interface{}) (interface{}, error) {
@@ -391,6 +417,8 @@ func (s step) parse(obj interface{}, rootnode interface{}) (interface{}, error) 
 		}
 	case "root":
 		return obj, err
+	case "search":
+		return s.get_search(obj, rootnode)
 	default:
 		return nil, fmt.Errorf("expression don't support in filter %s", s.op)
 	}
@@ -429,14 +457,14 @@ func (s step) get_key(obj interface{}, key string) (interface{}, error) {
 		}
 		return []interface{}{}, nil
 	default:
-		return nil, fmt.Errorf("object is not map")
+		return nil, nil
 	}
 }
 
 func (s step) get_idx(obj interface{}, idx int) (interface{}, error) {
 	jsonarr, ok := obj.([]interface{})
 	if !ok {
-		return nil, fmt.Errorf("object is not Slice")
+		return nil, nil
 	}
 	length := len(jsonarr)
 	if idx >= 0 {
@@ -459,7 +487,7 @@ func (s step) get_idx(obj interface{}, idx int) (interface{}, error) {
 	return jsonarr[_idx], nil
 }
 
-func (s step) get_range(obj, frm, to interface{}) (interface{}, error) {
+func (s step) get_range(obj, frm, to interface{}) ([]interface{}, error) {
 	jsonarr, ok := obj.([]interface{})
 	if !ok {
 		return nil, fmt.Errorf("object is not Slice")
@@ -509,7 +537,10 @@ func (s step) get_scan(obj interface{}) ([]interface{}, error) {
 	case reflect.Map:
 		if jsonMap, ok := obj.(map[string]interface{}); ok {
 			retval := make([]interface{}, 0, len(jsonMap))
-			for s2 := range jsonMap {
+			for s2, v := range jsonMap {
+				if v == nil {
+					continue
+				}
 				if s.replaceVal != nil {
 					jsonMap[s2] = s.replaceVal
 				}
@@ -522,7 +553,10 @@ func (s step) get_scan(obj interface{}) ([]interface{}, error) {
 		// slice we should get from all objects in it.
 		if jsonarr, ok := obj.([]interface{}); ok {
 			retval := make([]interface{}, 0, len(jsonarr))
-			for s2 := range jsonarr {
+			for s2, v := range jsonarr {
+				if v == nil {
+					continue
+				}
 				if s.replaceVal != nil {
 					jsonarr[s2] = s.replaceVal
 				}
@@ -567,10 +601,55 @@ func (s step) get_filtered(obj, root interface{}, filter string) ([]interface{},
 			}
 		}
 	default:
-		return nil, fmt.Errorf("don't support filter on this type: %v", reflect.TypeOf(obj).Kind())
+		return nil, nil
 	}
 
 	return res, nil
+}
+
+func (s step) get_search(obj interface{}, root interface{}) ([]interface{}, error) {
+	ret := make([]interface{}, 0)
+	robj, err := s.next.parse(obj, root)
+	if err != nil {
+		return nil, err
+	}
+	if olist, ok := robj.([]interface{}); ok && len(olist) > 0 {
+		ret = append(ret, olist...)
+	} else if robj != nil {
+		ret = append(ret, robj)
+	}
+	var slist []interface{}
+	_, ok := obj.([]interface{})
+	if ok {
+		tlist, err := emptyStep.get_scan(obj)
+		if err != nil {
+			return nil, err
+		}
+		for _, i := range tlist {
+			ttlist, err := emptyStep.get_scan(i)
+			if err != nil {
+				return nil, err
+			}
+			if len(ttlist) > 0 {
+				slist = append(slist, ttlist...)
+			}
+		}
+	} else {
+		slist, err = emptyStep.get_scan(obj)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if len(slist) > 0 {
+		for _, i := range slist {
+			cret, err := s.get_search(i, root)
+			if err != nil {
+				return nil, err
+			}
+			ret = append(ret, cret...)
+		}
+	}
+	return ret, nil
 }
 
 type filterParam struct {

@@ -7,6 +7,7 @@ import (
 	"go/types"
 	"reflect"
 	"regexp"
+	"sort"
 	"testing"
 )
 
@@ -231,7 +232,7 @@ func Test_jsonpath_authors_of_all_books(t *testing.T) {
 var token_cases = []map[string]interface{}{
 	map[string]interface{}{
 		"query":  "$..author",
-		"tokens": []string{"$", "*", "author"},
+		"tokens": []string{"$", " ", "author"},
 	},
 	map[string]interface{}{
 		"query":  "$.store.*",
@@ -239,7 +240,7 @@ var token_cases = []map[string]interface{}{
 	},
 	map[string]interface{}{
 		"query":  "$.store..price",
-		"tokens": []string{"$", "store", "*", "price"},
+		"tokens": []string{"$", "store", " ", "price"},
 	},
 	map[string]interface{}{
 		"query":  "$.store.book[*].author",
@@ -247,23 +248,23 @@ var token_cases = []map[string]interface{}{
 	},
 	map[string]interface{}{
 		"query":  "$..book[2]",
-		"tokens": []string{"$", "*", "book[2]"},
+		"tokens": []string{"$", " ", "book[2]"},
 	},
 	map[string]interface{}{
 		"query":  "$..book[(@.length-1)]",
-		"tokens": []string{"$", "*", "book[(@.length-1)]"},
+		"tokens": []string{"$", " ", "book[(@.length-1)]"},
 	},
 	map[string]interface{}{
 		"query":  "$..book[0,1]",
-		"tokens": []string{"$", "*", "book[0,1]"},
+		"tokens": []string{"$", " ", "book[0,1]"},
 	},
 	map[string]interface{}{
 		"query":  "$..book[:2]",
-		"tokens": []string{"$", "*", "book[:2]"},
+		"tokens": []string{"$", " ", "book[:2]"},
 	},
 	map[string]interface{}{
 		"query":  "$..book[?(@.isbn)]",
-		"tokens": []string{"$", "*", "book[?(@.isbn)]"},
+		"tokens": []string{"$", " ", "book[?(@.isbn)]"},
 	},
 	map[string]interface{}{
 		"query":  "$.store.book[?(@.price < 10)]",
@@ -271,23 +272,23 @@ var token_cases = []map[string]interface{}{
 	},
 	map[string]interface{}{
 		"query":  "$..book[?(@.price <= $.expensive)]",
-		"tokens": []string{"$", "*", "book[?(@.price <= $.expensive)]"},
+		"tokens": []string{"$", " ", "book[?(@.price <= $.expensive)]"},
 	},
 	map[string]interface{}{
 		"query":  "$..book[?(@.author =~ /.*REES/i)]",
-		"tokens": []string{"$", "*", "book[?(@.author =~ /.*REES/i)]"},
+		"tokens": []string{"$", " ", "book[?(@.author =~ /.*REES/i)]"},
 	},
 	map[string]interface{}{
 		"query":  "$..book[?(@.author =~ /.*REES\\]/i)]",
-		"tokens": []string{"$", "*", "book[?(@.author =~ /.*REES\\]/i)]"},
+		"tokens": []string{"$", " ", "book[?(@.author =~ /.*REES\\]/i)]"},
 	},
 	map[string]interface{}{
 		"query":  "$..*",
-		"tokens": []string{"$", "*", "*"},
+		"tokens": []string{"$", " ", "*"},
 	},
 	map[string]interface{}{
 		"query":  "$....author",
-		"tokens": []string{"$", "*", "*", "*", "author"},
+		"tokens": []string{"$", " ", "author"},
 	},
 }
 
@@ -503,8 +504,7 @@ func Test_jsonpath_get_key(t *testing.T) {
 	obj2 := 1
 	res, err = emptyStep.get_key(obj2, "key")
 	fmt.Println(err, res)
-	if err == nil {
-
+	if res != nil {
 		t.Errorf("object is not map error not raised")
 		return
 	}
@@ -546,7 +546,7 @@ func Test_jsonpath_get_idx(t *testing.T) {
 	}
 	res, err = emptyStep.get_idx(obj, 4)
 	fmt.Println(err, res)
-	if err == nil {
+	if res != nil {
 		t.Errorf("index out of range  error not raised")
 		return
 	}
@@ -576,7 +576,7 @@ func Test_jsonpath_get_idx(t *testing.T) {
 
 	obj1 := 1
 	res, err = emptyStep.get_idx(obj1, 1)
-	if err == nil {
+	if res != nil {
 		t.Errorf("object is not Slice error not raised")
 		return
 	}
@@ -601,7 +601,7 @@ func Test_jsonpath_get_range(t *testing.T) {
 	if err != nil {
 		t.Errorf("failed to get_range: %v", err)
 	}
-	if res.([]interface{})[0] != 1 || res.([]interface{})[1] != 2 {
+	if res[0] != 1 || res[1] != 2 {
 		t.Errorf("failed get_range: %v, expect: [1,2]", res)
 	}
 
@@ -611,26 +611,26 @@ func Test_jsonpath_get_range(t *testing.T) {
 	if err != nil {
 		t.Errorf("failed to get_range: %v", err)
 	}
-	fmt.Println(res.([]interface{}))
-	if res.([]interface{})[0] != 4 || res.([]interface{})[1] != 5 {
+	fmt.Println(res)
+	if res[0] != 4 || res[1] != 5 {
 		t.Errorf("failed get_range: %v, expect: [4,5]", res)
 	}
 
 	res, err = emptyStep.get_range(obj1, nil, 2)
 	t.Logf("err: %v, res:%v", err, res)
-	if res.([]interface{})[0] != 1 || res.([]interface{})[1] != 2 {
+	if res[0] != 1 || res[1] != 2 {
 		t.Errorf("from support nil failed: %v", res)
 	}
 
 	res, err = emptyStep.get_range(obj1, nil, nil)
 	t.Logf("err: %v, res:%v", err, res)
-	if len(res.([]interface{})) != 5 {
+	if len(res) != 5 {
 		t.Errorf("from, to both nil failed")
 	}
 
 	res, err = emptyStep.get_range(obj1, -2, nil)
 	t.Logf("err: %v, res:%v", err, res)
-	if res.([]interface{})[0] != 4 || res.([]interface{})[1] != 5 {
+	if res[0] != 4 || res[1] != 5 {
 		t.Errorf("from support nil failed: %v", res)
 	}
 
@@ -1234,7 +1234,7 @@ func Test_jsonpath_rootnode_is_nested_array(t *testing.T) {
 }
 
 func Test_jsonpath_rootnode_is_nested_array_range(t *testing.T) {
-	data := `[ [ {"test":1.1}, {"test":2.1} ], [ {"test":3.1}, {"test":4.1} ] ]`
+	data := `[[ {"test":1.1}, {"test":2.1} ], [ {"test":3.1}, {"test":4.1} ] ]`
 
 	var j interface{}
 
@@ -1259,11 +1259,62 @@ func Test_jsonpath_rootnode_is_nested_array_range(t *testing.T) {
 		t.Fatalf("len is not 2. got: %v", len(ares))
 	}
 
-	//FIXME: `$[:1].[0].test` got wrong result
-	//if ares[0].(float64) != 1.1 {
-	//	t.Fatal("idx: 0, should be 1.1, got: %v", ares[0])
-	//}
-	//if ares[1].(float64) != 3.1 {
-	//	t.Fatal("idx: 0, should be 3.1, got: %v", ares[1])
-	//}
+	if ares[0].(float64) != 1.1 {
+		t.Fatalf("idx: 0, should be 1.1, got: %v", ares[0])
+	}
+	if ares[1].(float64) != 3.1 {
+		t.Fatalf("idx: 0, should be 3.1, got: %v", ares[1])
+	}
+}
+
+func Test_jsonpath_deep_scan(t *testing.T) {
+	var jsdata = []byte(`
+{
+    "store": {
+        "book": [
+            {
+                "category": "reference",
+                "author": "Nigel Rees",
+                "title": "Sayings of the Century",
+                "price": 8.95
+            },
+            {
+                "category": "fiction",
+                "author": "Evelyn Waugh",
+                "title": "Sword of Honour",
+                "price": 12.99
+            },
+            {
+                "category": "fiction",
+                "author": "Herman Melville",
+                "title": "Moby Dick",
+                "isbn": "0-553-21311-3",
+                "price": 8.99
+            },
+            {
+                "category": "fiction",
+                "author": "J. R. R. Tolkien",
+                "title": "The Lord of the Rings",
+                "isbn": "0-395-19395-8",
+                "price": 22.99
+            }
+        ],
+        "bicycle": {
+            "color": "red",
+            "price": 19.95
+        }
+    },
+    "price": 10
+}
+`)
+	ret, err := LookupRaw(jsdata, "$..price")
+	if err != nil {
+		t.Error(err)
+	}
+	sort.Slice(ret, func(i, j int) bool {
+		return ret.([]interface{})[i].(float64) < ret.([]interface{})[j].(float64)
+	})
+	if !reflect.DeepEqual(ret, []interface{}{float64(8.95), float64(8.99), float64(10), float64(12.99), float64(19.95), float64(22.99)}) {
+		t.Errorf("search mismatch %v ", ret)
+	}
 }
