@@ -106,8 +106,12 @@ func (c *Compiled) Lookup(obj interface{}) (interface{}, error) {
 	}
 	var err error
 	rootnode := obj
+	var findnomap bool
 	for idx := 0; idx < len(c.steps); idx++ {
 		s := c.steps[idx]
+		if !findnomap && !s.singleReturn() {
+			findnomap = true
+		}
 		if s.op == "search" {
 			s.next = &c.steps[idx+1]
 			idx++
@@ -117,10 +121,7 @@ func (c *Compiled) Lookup(obj interface{}) (interface{}, error) {
 		if err != nil {
 			return nil, err
 		}
-		//Note: scan and filter will collect match result into slice.
-		//But real result should be the collection of each matched object parsed by the rest step.
-		//So make a special logic here.
-		if s.shouldSeparate() && idx != len(c.steps)-1 {
+		if _, ok := obj.([]interface{}); ok && findnomap && idx != len(c.steps)-1 {
 			temc := &Compiled{
 				steps: c.steps[idx+1:],
 			}
@@ -334,14 +335,11 @@ func parse_token(token string) (step, error) {
 	return retstep, nil
 }
 
-func (s step) shouldSeparate() bool {
-	if s.op == "filter" || s.op == "scan" || s.op == "search" || s.op == "range" {
+func (s step) singleReturn() bool {
+	if s.op == "idx" && len(s.args.([]int)) == 1 {
 		return true
 	}
-	if s.op == "idx" && len(s.args.([]int)) > 1 {
-		return true
-	}
-	return false
+	return s.op == "key"
 }
 
 func (s step) parse(obj interface{}, rootnode interface{}) (interface{}, error) {
@@ -354,7 +352,7 @@ func (s step) parse(obj interface{}, rootnode interface{}) (interface{}, error) 
 		}
 	case "idx":
 		if len(s.key) > 0 {
-			obj, err = s.get_key(obj, s.key)
+			obj, err = emptyStep.get_key(obj, s.key)
 			if err != nil {
 				return nil, err
 			}
@@ -442,20 +440,6 @@ func (s step) get_key(obj interface{}, key string) (interface{}, error) {
 			return val, nil
 		}
 		return nil, fmt.Errorf("key error: %s not found in object", key)
-	case reflect.Slice:
-		// slice we should get from all objects in it.
-		if jsonarr, ok := obj.([]interface{}); ok {
-			res := make([]interface{}, 0, len(jsonarr))
-			for _, v := range jsonarr {
-				if v, err := s.get_key(v, key); err == nil {
-					if res != nil {
-						res = append(res, v)
-					}
-				}
-			}
-			return res, nil
-		}
-		return []interface{}{}, nil
 	default:
 		return nil, nil
 	}
@@ -619,26 +603,9 @@ func (s step) get_search(obj interface{}, root interface{}) ([]interface{}, erro
 		ret = append(ret, robj)
 	}
 	var slist []interface{}
-	_, ok := obj.([]interface{})
-	if ok {
-		tlist, err := emptyStep.get_scan(obj)
-		if err != nil {
-			return nil, err
-		}
-		for _, i := range tlist {
-			ttlist, err := emptyStep.get_scan(i)
-			if err != nil {
-				return nil, err
-			}
-			if len(ttlist) > 0 {
-				slist = append(slist, ttlist...)
-			}
-		}
-	} else {
-		slist, err = emptyStep.get_scan(obj)
-		if err != nil {
-			return nil, err
-		}
+	slist, err = emptyStep.get_scan(obj)
+	if err != nil {
+		return nil, err
 	}
 	if len(slist) > 0 {
 		for _, i := range slist {

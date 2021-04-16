@@ -1317,4 +1317,14 @@ func Test_jsonpath_deep_scan(t *testing.T) {
 	if !reflect.DeepEqual(ret, []interface{}{float64(8.95), float64(8.99), float64(10), float64(12.99), float64(19.95), float64(22.99)}) {
 		t.Errorf("search mismatch %v ", ret)
 	}
+	ret, err = LookupRaw(jsdata, "$.store..price")
+	if err != nil {
+		t.Error(err)
+	}
+	sort.Slice(ret, func(i, j int) bool {
+		return ret.([]interface{})[i].(float64) < ret.([]interface{})[j].(float64)
+	})
+	if !reflect.DeepEqual(ret, []interface{}{float64(8.95), float64(8.99), float64(12.99), float64(19.95), float64(22.99)}) {
+		t.Errorf("search mismatch %v ", ret)
+	}
 }
